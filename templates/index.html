@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess AI Arena - Q-Learning vs Stockfish</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .chess-section {
+            flex: 1;
+            min-width: 400px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .stats-section {
+            flex: 1;
+            min-width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        #board {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .game-history {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .game-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+        }
+        .winner-qlearning { color: #4CAF50; font-weight: bold; }
+        .winner-stockfish { color: #f44336; font-weight: bold; }
+        .winner-draw { color: #ff9800; font-weight: bold; }
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <h1>♟️ Chess AI Arena - Q-Learning vs Stockfish</h1>
+    
+    <div class="container">
+        <div class="chess-section">
+            <div id="board"></div>
+            
+            <div class="controls">
+                <button onclick="startTraining(10)">🔰 Train 10 Games</button>
+                <button onclick="startTraining(50)">🚀 Train 50 Games</button>
+                <button onclick="watchLiveGame()">👀 Watch Live Game</button>
+                <button onclick="updateStats()">📊 Refresh Stats</button>
+            </div>
+            
+            <div id="trainingStatus" class="stat-card">
+                <div class="stat-label">Training Status</div>
+                <div class="stat-value">Ready</div>
+            </div>
+        </div>
+        
+        <div class="stats-section">
+            <h2>AI Performance Metrics</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Games</div>
+                    <div id="totalGames" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Win Rate</div>
+                    <div id="winRate" class="stat-value">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Q-Learning Wins</div>
+                    <div id="qlearningWins" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Stockfish Wins</div>
+                    <div id="stockfishWins" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Draws</div>
+                    <div id="draws" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">States Learned</div>
+                    <div id="statesLearned" class="stat-value">0</div>
+                </div>
+            </div>
+            
+            <h3>Recent Games</h3>
+            <div id="gameHistory" class="game-history">
+                <!-- Game history will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let board = null;
+        let game = new Chess();
+        
+        // Initialize chessboard
+        function initBoard() {
+            const boardConfig = {
+                draggable: false,
+                position: 'start',
+                pieceTheme: 'https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/img/chesspieces/wikipedia/{piece}.png'
+            };
+            
+            board = Chessboard('board', boardConfig);
+        }
+        
+        // Update board with FEN position
+        function updateBoard(fen) {
+            if (board) {
+                board.position(fen);
+            }
+        }
+        
+        // Start training session
+        async function startTraining(numGames) {
+            document.getElementById('trainingStatus').querySelector('.stat-value').textContent = 'Training...';
+            
+            try {
+                const response = await fetch('/api/start_training', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({num_games: numGames})
+                });
+                
+                const data = await response.json();
+                document.getElementById('trainingStatus').querySelector('.stat-value').textContent = `Training ${data.games} games`;
+                
+                // Poll for updates
+                setTimeout(updateStats, 2000);
+                
+            } catch (error) {
+                console.error('Error starting training:', error);
+                document.getElementById('trainingStatus').querySelector('.stat-value').textContent = 'Error';
+            }
+        }
+        
+        // Watch a live game move by move
+        async function watchLiveGame() {
+            try {
+                const response = await fetch('/api/watch_game');
+                const data = await response.json();
+                
+                if (data.live_game && data.live_game.game_log) {
+                    // Animate through the moves
+                    const gameLog = data.live_game.game_log;
+                    let moveIndex = 0;
+                    
+                    const animateGame = setInterval(() => {
+                        if (moveIndex < gameLog.length) {
+                            updateBoard(gameLog[moveIndex]);
+                            moveIndex++;
+                        } else {
+                            clearInterval(animateGame);
+                        }
+                    }, 500);
+                }
+                
+            } catch (error) {
+                console.error('Error watching live game:', error);
+            }
+        }
+        
+        // Update statistics
+        async function updateStats() {
+            try {
+                const [statsResponse, historyResponse] = await Promise.all([
+                    fetch('/api/agent_stats'),
+                    fetch('/api/game_history')
+                ]);
+                
+                const stats = await statsResponse.json();
+                const history = await historyResponse.json();
+                
+                // Update stats display
+                document.getElementById('totalGames').textContent = stats.total_games || 0;
+                document.getElementById('winRate').textContent = stats.win_rate ? stats.win_rate.toFixed(1) + '%' : '0%';
+                document.getElementById('qlearningWins').textContent = stats.recent_wins || 0;
+                document.getElementById('stockfishWins').textContent = stats.recent_losses || 0;
+                document.getElementById('draws').textContent = stats.recent_draws || 0;
+                document.getElementById('statesLearned').textContent = stats.states_learned || 0;
+                
+                // Update game history
+                const historyElement = document.getElementById('gameHistory');
+                if (history.games && history.games.length > 0) {
+                    historyElement.innerHTML = history.games.map(game => `
+                        <div class="game-item">
+                            <span>Game ${game.game_number}</span>
+                            <span class="winner-${game.winner}">
+                                ${game.winner === 'q_learning' ? 'Q-Learning Won' : 
+                                  game.winner === 'stockfish' ? 'Stockfish Won' : 'Draw'}
+                            </span>
+                            <span>${game.moves} moves</span>
+                        </div>
+                    `).join('');
+                } else {
+                    historyElement.innerHTML = '<div class="game-item">No games played yet</div>';
+                }
+                
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            initBoard();
+            updateStats();
+            
+            // Update stats every 5 seconds
+            setInterval(updateStats, 5000);
+        };
+    </script>
+</body>
+</html>
