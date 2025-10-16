@@ -5,21 +5,19 @@ import numpy as np
 import random
 import time
 import threading
-from collections import deque
+import os
+import subprocess
 
 app = Flask(__name__)
 
 # Global training state
 training_active = False
-current_training_session = None
 training_results = []
 live_game_data = {
-    'current_fen': 'start',
+    'current_fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     'moves': [],
-    'q_learning_score': 0,
-    'stockfish_score': 0,
     'game_number': 0,
-    'status': 'Waiting to start training...'
+    'status': 'Ready to start training'
 }
 
 class ChessQLearningAgent:
@@ -27,8 +25,7 @@ class ChessQLearningAgent:
         self.q_table = {}
         self.learning_rate = 0.1
         self.discount_factor = 0.95
-        self.exploration_rate = 0.5
-        self.learning_history = []
+        self.exploration_rate = 0.5 # Initial exploration rate
         
     def get_state_key(self, board):
         """Create a simplified state representation"""
@@ -107,12 +104,6 @@ class ChessQLearningAgent:
         )
         
         self.q_table[old_state][move_str] = new_q
-        self.learning_history.append({
-            'old_state': old_state,
-            'move': move_str,
-            'reward': reward,
-            'new_q': new_q
-        })
 
 def calculate_reward(old_board, move, new_board):
     """Calculate reward for a move"""
@@ -138,8 +129,31 @@ def calculate_reward(old_board, move, new_board):
     
     return reward
 
+def get_stockfish_path():
+    """Find Stockfish executable path"""
+    possible_paths = [
+        '/usr/games/stockfish',
+        '/usr/bin/stockfish', 
+        '/usr/local/bin/stockfish',
+        'stockfish'  # Try PATH
+    ]
+    
+    for path in possible_paths:
+        try:
+            # Test if Stockfish works at this path
+            engine = chess.engine.SimpleEngine.popen_uci(path)
+            engine.quit()
+            print(f"✅ Found Stockfish at: {path}")
+            return path
+        except:
+            continue
+    
+    print("❌ Stockfish not found in common locations")
+    return None
+
 # Global Q-learning agent
 q_agent = ChessQLearningAgent()
+stockfish_path = get_stockfish_path()
 
 def run_training_session(num_games):
     """Run training session in background"""
@@ -149,8 +163,15 @@ def run_training_session(num_games):
     session_results = []
     
     try:
-        # Initialize Stockfish
-        engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        # Initialize Stockfish if available
+        engine = None
+        if stockfish_path:
+            try:
+                engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+                print("✅ Stockfish engine started successfully")
+            except Exception as e:
+                print(f"❌ Failed to start Stockfish: {e}")
+                engine = None
         
         for game_num in range(num_games):
             if not training_active:
@@ -158,7 +179,7 @@ def run_training_session(num_games):
                 
             board = chess.Board()
             game_moves = []
-            q_agent.exploration_rate = max(0.1, 0.5 * (0.99 ** game_num))  # Decay exploration
+            q_agent.exploration_rate = max(0.1, 0.5 * (0.99 ** game_num))
             
             # Update live game data
             live_game_data.update({
@@ -168,7 +189,7 @@ def run_training_session(num_games):
                 'status': f'Game {game_num + 1}/{num_games} - In progress...'
             })
             
-            while not board.is_game_over() and len(game_moves) < 100:
+            while not board.is_game_over() and len(game_moves) < 50:
                 if not training_active:
                     break
                     
@@ -185,28 +206,47 @@ def run_training_session(num_games):
                     
                     # Update live display
                     live_game_data['current_fen'] = board.fen()
-                    live_game_data['moves'] = game_moves[-10:]  # Last 10 moves
+                    live_game_data['moves'] = game_moves[-10:]
                     
                     # Update Q-values if game continues
                     if not board.is_game_over():
-                        # Get Stockfish's response for learning
-                        stockfish_move = engine.play(board, chess.engine.Limit(time=0.1)).move
-                        new_board = board.copy()
-                        new_board.push(stockfish_move)
-                        q_agent.update(old_board, move, reward, new_board)
+                        if engine:
+                            # Get Stockfish's response for learning
+                            stockfish_move = engine.play(board, chess.engine.Limit(time=0.1)).move
+                            new_board = board.copy()
+                            new_board.push(stockfish_move)
+                            q_agent.update(old_board, move, reward, new_board)
+                        else:
+                            # Fallback: random move for black
+                            legal_moves = list(board.legal_moves)
+                            if legal_moves:
+                                stockfish_move = random.choice(legal_moves)
+                                new_board = board.copy()
+                                new_board.push(stockfish_move)
+                                q_agent.update(old_board, move, reward, new_board)
                     else:
                         q_agent.update(old_board, move, reward, board)
                         
-                else:  # Stockfish's turn
-                    move = engine.play(board, chess.engine.Limit(time=0.1)).move
+                else:  # Black's turn (Stockfish or random)
+                    if engine:
+                        move = engine.play(board, chess.engine.Limit(time=0.1)).move
+                        game_moves.append(f"Stockfish: {move}")
+                    else:
+                        # Fallback: random move
+                        legal_moves = list(board.legal_moves)
+                        if legal_moves:
+                            move = random.choice(legal_moves)
+                            game_moves.append(f"Random: {move}")
+                        else:
+                            break
+                    
                     board.push(move)
-                    game_moves.append(f"Stockfish: {move}")
                     
                     # Update live display
                     live_game_data['current_fen'] = board.fen()
                     live_game_data['moves'] = game_moves[-10:]
                 
-                time.sleep(0.5)  # Slow down for watching
+                time.sleep(0.3)  # Slow down for watching
             
             # Determine game result
             if board.is_checkmate():
@@ -218,7 +258,7 @@ def run_training_session(num_games):
                 'game_number': game_num + 1,
                 'winner': winner,
                 'moves': len(game_moves),
-                'exploration_rate': q_agent.exploration_rate,
+                'exploration_rate': round(q_agent.exploration_rate, 3),
                 'states_learned': len(q_agent.q_table)
             }
             
@@ -231,9 +271,10 @@ def run_training_session(num_games):
                 'status': f'Game {game_num + 1}/{num_games} - Complete! Winner: {winner}'
             })
             
-            time.sleep(1)  # Pause between games
+            time.sleep(1)
         
-        engine.quit()
+        if engine:
+            engine.quit()
         
     except Exception as e:
         print(f"Training error: {e}")
@@ -249,7 +290,7 @@ def home():
 @app.route('/api/start_training', methods=['POST'])
 def start_training():
     """Start a new training session"""
-    global current_training_session, training_active
+    global training_active
     
     if training_active:
         return jsonify({'error': 'Training already in progress'})
@@ -258,16 +299,15 @@ def start_training():
     num_games = data.get('num_games', 10)
     
     # Start training in background thread
-    current_training_session = threading.Thread(
-        target=lambda: run_training_session(num_games)
-    )
-    current_training_session.daemon = True
-    current_training_session.start()
+    thread = threading.Thread(target=lambda: run_training_session(num_games))
+    thread.daemon = True
+    thread.start()
     
     return jsonify({
         'status': 'started', 
         'num_games': num_games,
-        'message': f'Started training session with {num_games} games'
+        'message': f'Started training session with {num_games} games',
+        'stockfish_available': stockfish_path is not None
     })
 
 @app.route('/api/stop_training')
@@ -284,13 +324,14 @@ def training_status():
     
     # Calculate metrics
     if training_results:
-        recent_games = training_results[-50:]
+        recent_games = training_results
         q_wins = sum(1 for g in recent_games if g['winner'] == 'q_learning')
         s_wins = sum(1 for g in recent_games if g['winner'] == 'stockfish')
         draws = sum(1 for g in recent_games if g['winner'] == 'draw')
         win_rate = (q_wins / len(recent_games)) * 100 if recent_games else 0
+        avg_moves = sum(g['moves'] for g in recent_games) / len(recent_games) if recent_games else 0
     else:
-        q_wins = s_wins = draws = win_rate = 0
+        q_wins = s_wins = draws = win_rate = avg_moves = 0
     
     return jsonify({
         'training_active': training_active,
@@ -301,10 +342,12 @@ def training_status():
             'stockfish_wins': s_wins,
             'draws': draws,
             'win_rate': round(win_rate, 1),
+            'avg_moves': round(avg_moves, 1),
             'exploration_rate': round(q_agent.exploration_rate, 3),
             'states_learned': len(q_agent.q_table)
         },
-        'recent_games': training_results[-10:]  # Last 10 games
+        'recent_games': training_results[-10:],
+        'stockfish_available': stockfish_path is not None
     })
 
 @app.route('/api/agent_progress')
@@ -312,7 +355,7 @@ def agent_progress():
     """Get Q-learning agent learning progress"""
     progress_data = []
     for i, game in enumerate(training_results):
-        if i % 5 == 0:  # Sample every 5 games
+        if i % 2 == 0 or i == len(training_results) - 1:  # Sample every 2 games
             progress_data.append({
                 'game_number': game['game_number'],
                 'winner': game['winner'],
@@ -322,4 +365,9 @@ def agent_progress():
     return jsonify({'progress': progress_data})
 
 if __name__ == '__main__':
+    print("🚀 Starting Chess AI Training Server...")
+    if stockfish_path:
+        print("✅ Stockfish is available")
+    else:
+        print("❌ Stockfish not found - using random moves for black")
     app.run(host='0.0.0.0', port=5000, debug=True)

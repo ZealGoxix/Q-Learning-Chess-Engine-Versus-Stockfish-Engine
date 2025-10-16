@@ -4,19 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess AI Training - Q-Learning vs Stockfish</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    
+    <!-- Use more reliable CDNs -->
+    <script src="https://unpkg.com/chess.js@0.10.3/chess.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
+            margin: 0;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
+        
         .container {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -27,20 +35,26 @@
                 "metrics metrics"
                 "progress progress"
                 "games games";
+            max-width: 1400px;
+            margin: 0 auto;
         }
+        
         .header {
             grid-area: header;
             text-align: center;
             color: white;
             margin-bottom: 20px;
         }
+        
         .chess-board {
             grid-area: board;
             background: white;
             padding: 20px;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
         }
+        
         .controls {
             grid-area: controls;
             background: white;
@@ -48,6 +62,7 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
+        
         .metrics {
             grid-area: metrics;
             background: white;
@@ -55,6 +70,7 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
+        
         .progress {
             grid-area: progress;
             background: white;
@@ -62,6 +78,7 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
+        
         .games {
             grid-area: games;
             background: white;
@@ -69,17 +86,21 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
+        
         #board {
             width: 400px;
             height: 400px;
             margin: 0 auto;
+            border: 2px solid #333;
         }
+        
         .controls-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
             margin: 20px 0;
         }
+        
         button {
             background: #4CAF50;
             color: white;
@@ -90,27 +111,33 @@
             font-size: 16px;
             transition: all 0.3s;
         }
+        
         button:hover {
             background: #45a049;
             transform: translateY(-2px);
         }
+        
         button:disabled {
             background: #cccccc;
             cursor: not-allowed;
             transform: none;
         }
+        
         button.stop {
             background: #f44336;
         }
+        
         button.stop:hover {
             background: #da190b;
         }
+        
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 15px;
             margin: 20px 0;
         }
+        
         .stat-card {
             background: #f8f9fa;
             padding: 15px;
@@ -118,19 +145,23 @@
             text-align: center;
             border-left: 4px solid #4CAF50;
         }
+        
         .stat-value {
             font-size: 24px;
             font-weight: bold;
             color: #333;
         }
+        
         .stat-label {
             font-size: 14px;
             color: #666;
         }
+        
         .game-history {
             max-height: 300px;
             overflow-y: auto;
         }
+        
         .game-item {
             padding: 10px;
             border-bottom: 1px solid #eee;
@@ -138,21 +169,25 @@
             justify-content: space-between;
             align-items: center;
         }
+        
         .winner-qlearning { 
             background: #e8f5e8; 
             color: #2e7d32;
             font-weight: bold;
         }
+        
         .winner-stockfish { 
             background: #ffebee; 
             color: #c62828;
             font-weight: bold;
         }
+        
         .winner-draw { 
             background: #fff3e0; 
             color: #ef6c00;
             font-weight: bold;
         }
+        
         .status-indicator {
             padding: 10px;
             border-radius: 5px;
@@ -160,8 +195,10 @@
             margin: 10px 0;
             font-weight: bold;
         }
+        
         .status-active { background: #e8f5e8; color: #2e7d32; }
         .status-inactive { background: #ffebee; color: #c62828; }
+        
         .moves-log {
             max-height: 150px;
             overflow-y: auto;
@@ -171,24 +208,45 @@
             background: #f9f9f9;
             font-family: monospace;
             font-size: 12px;
+            margin-top: 10px;
         }
+        
         .move-entry {
             padding: 2px 0;
         }
+        
         h1, h2, h3 {
             color: #333;
             margin-top: 0;
         }
+        
         .chart-container {
             height: 300px;
             margin-top: 20px;
         }
+        
         input[type="number"] {
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 16px;
             width: 100px;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .board-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
     </style>
 </head>
@@ -197,13 +255,19 @@
         <div class="header">
             <h1>♟️ Chess AI Training Arena</h1>
             <h2>Q-Learning Agent vs Stockfish - Live Training Session</h2>
+            <div id="stockfishWarning" class="warning" style="display: none;">
+                ⚠️ Stockfish not found - using random moves for black. Install with: <code>sudo apt-get install stockfish</code>
+            </div>
         </div>
         
         <div class="chess-board">
             <h2>Live Training Board</h2>
-            <div id="board"></div>
+            <div class="board-container">
+                <div id="board"></div>
+                <div>Q-Learning (White) vs <span id="blackPlayer">Stockfish (Black)</span></div>
+            </div>
             <div class="status-indicator" id="trainingStatus">
-                Waiting to start training...
+                Ready to start training...
             </div>
             <div class="moves-log" id="movesLog">
                 No moves yet...
@@ -215,7 +279,7 @@
             <div class="controls-grid">
                 <div>
                     <label>Number of Games:</label>
-                    <input type="number" id="numGames" value="10" min="1" max="100">
+                    <input type="number" id="numGames" value="5" min="1" max="100">
                 </div>
                 <button onclick="startTraining()" id="startBtn">🚀 Start Training</button>
                 <div>
@@ -290,46 +354,105 @@
     </div>
 
     <script>
-        // Initialize chess board
+        // Global variables
         let board = null;
         let progressChart = null;
+        let game = new Chess();
         
+        // Initialize chess board with better error handling
         function initBoard() {
-            const config = {
-                draggable: false,
-                position: 'start',
-                pieceTheme: 'https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/img/chesspieces/wikipedia/{piece}.png'
-            };
-            board = Chessboard('board', config);
+            console.log("🔄 Initializing chess board...");
+            
+            try {
+                // Clear any existing board
+                const boardElement = document.getElementById('board');
+                if (boardElement) {
+                    boardElement.innerHTML = '';
+                }
+                
+                // Initialize new board
+                board = Chessboard('board', {
+                    draggable: false,
+                    position: 'start',
+                    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+                    onLoad: function() {
+                        console.log("✅ Chess board loaded successfully!");
+                    }
+                });
+                
+                if (!board) {
+                    throw new Error("Chessboard initialization failed");
+                }
+                
+                console.log("🎯 Board initialized:", board);
+                
+            } catch (error) {
+                console.error("❌ Error initializing board:", error);
+                // Fallback: create a simple visual representation
+                const boardElement = document.getElementById('board');
+                if (boardElement) {
+                    boardElement.innerHTML = `
+                        <div style="width: 400px; height: 400px; background: #f0d9b5; 
+                                  display: grid; grid-template-columns: repeat(8, 1fr); 
+                                  grid-template-rows: repeat(8, 1fr); border: 2px solid #333;">
+                            ${Array.from({length: 64}, (_, i) => {
+                                const row = Math.floor(i / 8);
+                                const col = i % 8;
+                                const isLight = (row + col) % 2 === 0;
+                                return `<div style="background: ${isLight ? '#f0d9b5' : '#b58863'};"></div>`;
+                            }).join('')}
+                        </div>
+                        <div style="text-align: center; margin-top: 10px; color: red;">
+                            Chess board failed to load - but training will still work!
+                        </div>
+                    `;
+                }
+            }
         }
         
         // Initialize progress chart
         function initChart() {
-            const ctx = document.getElementById('progressChart').getContext('2d');
-            progressChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Q-Learning Win Rate (%)',
-                        data: [],
-                        borderColor: '#4CAF50',
-                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100
+            try {
+                const ctx = document.getElementById('progressChart').getContext('2d');
+                progressChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Q-Learning Win Rate (%)',
+                            data: [],
+                            borderColor: '#4CAF50',
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100
+                            }
                         }
                     }
+                });
+                console.log("✅ Progress chart initialized");
+            } catch (error) {
+                console.error("❌ Error initializing chart:", error);
+            }
+        }
+        
+        // Update board position
+        function updateBoard(fen) {
+            if (board && typeof board.position === 'function') {
+                try {
+                    board.position(fen);
+                } catch (error) {
+                    console.error("Error updating board position:", error);
                 }
-            });
+            }
         }
         
         // Start training session
@@ -341,6 +464,8 @@
             document.getElementById('trainingStatus').textContent = 'Starting training session...';
             document.getElementById('trainingStatus').className = 'status-indicator status-active';
             
+            console.log("🎮 Starting training with", numGames, "games");
+            
             try {
                 const response = await fetch('/api/start_training', {
                     method: 'POST',
@@ -349,18 +474,23 @@
                 });
                 
                 const data = await response.json();
+                console.log("📡 Start training response:", data);
+                
                 if (data.error) {
                     alert('Error: ' + data.error);
-                    document.getElementById('startBtn').disabled = false;
-                    document.getElementById('stopBtn').disabled = true;
+                    resetTrainingButtons();
                 } else {
                     document.getElementById('trainingStatus').textContent = data.message;
+                    if (!data.stockfish_available) {
+                        document.getElementById('stockfishWarning').style.display = 'block';
+                        document.getElementById('blackPlayer').textContent = 'Random (Black)';
+                    }
                 }
                 
             } catch (error) {
+                console.error("❌ Error starting training:", error);
                 alert('Error starting training: ' + error.message);
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('stopBtn').disabled = true;
+                resetTrainingButtons();
             }
         }
         
@@ -370,11 +500,17 @@
                 await fetch('/api/stop_training');
                 document.getElementById('trainingStatus').textContent = 'Training stopped by user';
                 document.getElementById('trainingStatus').className = 'status-indicator status-inactive';
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('stopBtn').disabled = true;
+                resetTrainingButtons();
             } catch (error) {
+                console.error("❌ Error stopping training:", error);
                 alert('Error stopping training: ' + error.message);
             }
+        }
+        
+        // Reset training buttons to default state
+        function resetTrainingButtons() {
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
         }
         
         // Update display with current training status
@@ -391,34 +527,44 @@
                     document.getElementById('startBtn').disabled = true;
                     document.getElementById('stopBtn').disabled = false;
                 } else {
+                    if (statusEl.textContent.includes('Starting') || statusEl.textContent.includes('In progress')) {
+                        statusEl.textContent = 'Training completed';
+                    }
                     statusEl.className = 'status-indicator status-inactive';
                     document.getElementById('startBtn').disabled = false;
                     document.getElementById('stopBtn').disabled = true;
                 }
                 
                 // Update chess board
-                if (board && data.live_game.current_fen) {
-                    board.position(data.live_game.current_fen);
+                if (data.live_game.current_fen && data.live_game.current_fen !== 'start') {
+                    updateBoard(data.live_game.current_fen);
                 }
                 
                 // Update moves log
                 const movesLog = document.getElementById('movesLog');
-                movesLog.innerHTML = data.live_game.moves.map(move => 
-                    `<div class="move-entry">${move}</div>`
-                ).join('');
-                movesLog.scrollTop = movesLog.scrollHeight;
+                if (data.live_game.moves && data.live_game.moves.length > 0) {
+                    movesLog.innerHTML = data.live_game.moves.map(move => 
+                        `<div class="move-entry">${move}</div>`
+                    ).join('');
+                    movesLog.scrollTop = movesLog.scrollHeight;
+                } else {
+                    movesLog.innerHTML = 'No moves yet...';
+                }
                 
                 // Update current game
-                document.getElementById('currentGame').textContent = data.live_game.game_number;
+                document.getElementById('currentGame').textContent = data.live_game.game_number || '-';
                 
                 // Update metrics
-                document.getElementById('totalGames').textContent = data.metrics.total_games;
-                document.getElementById('qWins').textContent = data.metrics.q_learning_wins;
-                document.getElementById('sWins').textContent = data.metrics.stockfish_wins;
-                document.getElementById('draws').textContent = data.metrics.draws;
-                document.getElementById('winRate').textContent = data.metrics.win_rate + '%';
-                document.getElementById('explorationRate').textContent = data.metrics.exploration_rate;
-                document.getElementById('statesLearned').textContent = data.metrics.states_learned;
+                if (data.metrics) {
+                    document.getElementById('totalGames').textContent = data.metrics.total_games;
+                    document.getElementById('qWins').textContent = data.metrics.q_learning_wins;
+                    document.getElementById('sWins').textContent = data.metrics.stockfish_wins;
+                    document.getElementById('draws').textContent = data.metrics.draws;
+                    document.getElementById('winRate').textContent = data.metrics.win_rate + '%';
+                    document.getElementById('avgMoves').textContent = data.metrics.avg_moves;
+                    document.getElementById('explorationRate').textContent = data.metrics.exploration_rate;
+                    document.getElementById('statesLearned').textContent = data.metrics.states_learned;
+                }
                 
                 // Update game history
                 const historyEl = document.getElementById('gameHistory');
@@ -429,18 +575,21 @@
                             <span>${game.winner === 'q_learning' ? 'Q-Learning Won' : 
                                   game.winner === 'stockfish' ? 'Stockfish Won' : 'Draw'}</span>
                             <span>${game.moves} moves</span>
-                            <span>Exploration: ${game.exploration_rate.toFixed(3)}</span>
+                            <span>Exploration: ${game.exploration_rate}</span>
                         </div>
                     `).join('');
+                } else {
+                    historyEl.innerHTML = '<div class="game-item">No games played yet...</div>';
                 }
                 
-                // Update progress chart periodically
-                if (data.metrics.total_games % 5 === 0) {
-                    updateProgressChart();
+                // Show/hide Stockfish warning
+                if (!data.stockfish_available) {
+                    document.getElementById('stockfishWarning').style.display = 'block';
+                    document.getElementById('blackPlayer').textContent = 'Random (Black)';
                 }
                 
             } catch (error) {
-                console.error('Error updating display:', error);
+                console.error('❌ Error updating display:', error);
             }
         }
         
@@ -450,7 +599,7 @@
                 const response = await fetch('/api/agent_progress');
                 const data = await response.json();
                 
-                if (progressChart && data.progress.length > 0) {
+                if (progressChart && data.progress && data.progress.length > 0) {
                     const labels = data.progress.map(p => `Game ${p.game_number}`);
                     const winRates = [];
                     
@@ -467,21 +616,34 @@
                 }
                 
             } catch (error) {
-                console.error('Error updating chart:', error);
+                console.error('❌ Error updating chart:', error);
             }
         }
         
         // Initialize on page load
-        window.onload = function() {
+        window.addEventListener('load', function() {
+            console.log("🚀 Page loaded, initializing application...");
+            
+            // Initialize components
             initBoard();
             initChart();
             
-            // Update display every second
-            setInterval(updateDisplay, 1000);
+            // Initial display update
+            updateDisplay();
             
-            // Update progress chart every 10 seconds
-            setInterval(updateProgressChart, 10000);
-        };
+            // Set up periodic updates
+            setInterval(updateDisplay, 1000);
+            setInterval(updateProgressChart, 5000);
+            
+            console.log("✅ Application initialized successfully!");
+        });
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                updateDisplay();
+            }
+        });
     </script>
 </body>
 </html>
