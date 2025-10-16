@@ -3,35 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess AI Arena - Q-Learning vs Stockfish</title>
+    <title>Chess AI Training - Q-Learning vs Stockfish</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
         .container {
-            display: flex;
-            gap: 30px;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            grid-template-areas: 
+                "header header"
+                "board controls"
+                "metrics metrics"
+                "progress progress"
+                "games games";
         }
-        .chess-section {
-            flex: 1;
-            min-width: 400px;
+        .header {
+            grid-area: header;
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+        }
+        .chess-board {
+            grid-area: board;
             background: white;
             padding: 20px;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
-        .stats-section {
-            flex: 1;
-            min-width: 300px;
+        .controls {
+            grid-area: controls;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .metrics {
+            grid-area: metrics;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .progress {
+            grid-area: progress;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .games {
+            grid-area: games;
             background: white;
             padding: 20px;
             border-radius: 15px;
@@ -42,31 +74,40 @@
             height: 400px;
             margin: 0 auto;
         }
-        .controls {
-            text-align: center;
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
             margin: 20px 0;
         }
         button {
             background: #4CAF50;
             color: white;
             border: none;
-            padding: 12px 24px;
-            margin: 5px;
+            padding: 12px 20px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
-            transition: background 0.3s;
+            transition: all 0.3s;
         }
         button:hover {
             background: #45a049;
+            transform: translateY(-2px);
         }
         button:disabled {
             background: #cccccc;
             cursor: not-allowed;
+            transform: none;
+        }
+        button.stop {
+            background: #f44336;
+        }
+        button.stop:hover {
+            background: #da190b;
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: 15px;
             margin: 20px 0;
         }
@@ -75,6 +116,7 @@
             padding: 15px;
             border-radius: 8px;
             text-align: center;
+            border-left: 4px solid #4CAF50;
         }
         .stat-value {
             font-size: 24px;
@@ -88,212 +130,357 @@
         .game-history {
             max-height: 300px;
             overflow-y: auto;
-            margin-top: 20px;
         }
         .game-item {
             padding: 10px;
             border-bottom: 1px solid #eee;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
-        .winner-qlearning { color: #4CAF50; font-weight: bold; }
-        .winner-stockfish { color: #f44336; font-weight: bold; }
-        .winner-draw { color: #ff9800; font-weight: bold; }
-        h1, h2 {
-            color: #333;
+        .winner-qlearning { 
+            background: #e8f5e8; 
+            color: #2e7d32;
+            font-weight: bold;
+        }
+        .winner-stockfish { 
+            background: #ffebee; 
+            color: #c62828;
+            font-weight: bold;
+        }
+        .winner-draw { 
+            background: #fff3e0; 
+            color: #ef6c00;
+            font-weight: bold;
+        }
+        .status-indicator {
+            padding: 10px;
+            border-radius: 5px;
             text-align: center;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background: #f0f0f0;
-            border-radius: 10px;
             margin: 10px 0;
-            overflow: hidden;
+            font-weight: bold;
         }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50, #45a049);
-            transition: width 0.3s ease;
+        .status-active { background: #e8f5e8; color: #2e7d32; }
+        .status-inactive { background: #ffebee; color: #c62828; }
+        .moves-log {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f9f9f9;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .move-entry {
+            padding: 2px 0;
+        }
+        h1, h2, h3 {
+            color: #333;
+            margin-top: 0;
+        }
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        input[type="number"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            width: 100px;
         }
     </style>
 </head>
 <body>
-    <h1>♟️ Chess AI Arena - Q-Learning vs Stockfish</h1>
-    
     <div class="container">
-        <div class="chess-section">
+        <div class="header">
+            <h1>♟️ Chess AI Training Arena</h1>
+            <h2>Q-Learning Agent vs Stockfish - Live Training Session</h2>
+        </div>
+        
+        <div class="chess-board">
+            <h2>Live Training Board</h2>
             <div id="board"></div>
-            
-            <div class="controls">
-                <button onclick="startTraining(10)">🔰 Train 10 Games</button>
-                <button onclick="startTraining(50)">🚀 Train 50 Games</button>
-                <button onclick="watchLiveGame()">👀 Watch Live Game</button>
-                <button onclick="updateStats()">📊 Refresh Stats</button>
+            <div class="status-indicator" id="trainingStatus">
+                Waiting to start training...
             </div>
-            
-            <div id="trainingStatus" class="stat-card">
-                <div class="stat-label">Training Status</div>
-                <div class="stat-value">Ready</div>
+            <div class="moves-log" id="movesLog">
+                No moves yet...
             </div>
         </div>
         
-        <div class="stats-section">
-            <h2>AI Performance Metrics</h2>
+        <div class="controls">
+            <h2>Training Controls</h2>
+            <div class="controls-grid">
+                <div>
+                    <label>Number of Games:</label>
+                    <input type="number" id="numGames" value="10" min="1" max="100">
+                </div>
+                <button onclick="startTraining()" id="startBtn">🚀 Start Training</button>
+                <div>
+                    <div class="stat-card">
+                        <div class="stat-label">Current Game</div>
+                        <div class="stat-value" id="currentGame">-</div>
+                    </div>
+                </div>
+                <button onclick="stopTraining()" id="stopBtn" class="stop" disabled>🛑 Stop Training</button>
+            </div>
             
+            <h3>Training Progress</h3>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-label">Total Games</div>
-                    <div id="totalGames" class="stat-value">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Win Rate</div>
-                    <div id="winRate" class="stat-value">0%</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Q-Learning Wins</div>
-                    <div id="qlearningWins" class="stat-value">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Stockfish Wins</div>
-                    <div id="stockfishWins" class="stat-value">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Draws</div>
-                    <div id="draws" class="stat-value">0</div>
+                    <div class="stat-label">Exploration Rate</div>
+                    <div class="stat-value" id="explorationRate">0.5</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">States Learned</div>
-                    <div id="statesLearned" class="stat-value">0</div>
+                    <div class="stat-value" id="statesLearned">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Learning Rate</div>
+                    <div class="stat-value">0.1</div>
                 </div>
             </div>
-            
-            <h3>Recent Games</h3>
+        </div>
+        
+        <div class="metrics">
+            <h2>Performance Metrics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Games</div>
+                    <div class="stat-value" id="totalGames">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Q-Learning Wins</div>
+                    <div class="stat-value" id="qWins">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Stockfish Wins</div>
+                    <div class="stat-value" id="sWins">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Draws</div>
+                    <div class="stat-value" id="draws">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-value" id="winRate">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Moves/Game</div>
+                    <div class="stat-value" id="avgMoves">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="progress">
+            <h2>Learning Progress</h2>
+            <div class="chart-container">
+                <canvas id="progressChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="games">
+            <h2>Recent Games</h2>
             <div id="gameHistory" class="game-history">
-                <!-- Game history will appear here -->
+                <div class="game-item">No games played yet...</div>
             </div>
         </div>
     </div>
 
     <script>
+        // Initialize chess board
         let board = null;
-        let game = new Chess();
+        let progressChart = null;
         
-        // Initialize chessboard
         function initBoard() {
-            const boardConfig = {
+            const config = {
                 draggable: false,
                 position: 'start',
                 pieceTheme: 'https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/img/chesspieces/wikipedia/{piece}.png'
             };
-            
-            board = Chessboard('board', boardConfig);
+            board = Chessboard('board', config);
         }
         
-        // Update board with FEN position
-        function updateBoard(fen) {
-            if (board) {
-                board.position(fen);
-            }
+        // Initialize progress chart
+        function initChart() {
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Q-Learning Win Rate (%)',
+                        data: [],
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
         }
         
         // Start training session
-        async function startTraining(numGames) {
-            document.getElementById('trainingStatus').querySelector('.stat-value').textContent = 'Training...';
+        async function startTraining() {
+            const numGames = document.getElementById('numGames').value;
+            
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('trainingStatus').textContent = 'Starting training session...';
+            document.getElementById('trainingStatus').className = 'status-indicator status-active';
             
             try {
                 const response = await fetch('/api/start_training', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({num_games: numGames})
+                    body: JSON.stringify({num_games: parseInt(numGames)})
                 });
                 
                 const data = await response.json();
-                document.getElementById('trainingStatus').querySelector('.stat-value').textContent = `Training ${data.games} games`;
-                
-                // Poll for updates
-                setTimeout(updateStats, 2000);
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                } else {
+                    document.getElementById('trainingStatus').textContent = data.message;
+                }
                 
             } catch (error) {
-                console.error('Error starting training:', error);
-                document.getElementById('trainingStatus').querySelector('.stat-value').textContent = 'Error';
+                alert('Error starting training: ' + error.message);
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
             }
         }
         
-        // Watch a live game move by move
-        async function watchLiveGame() {
+        // Stop training session
+        async function stopTraining() {
             try {
-                const response = await fetch('/api/watch_game');
+                await fetch('/api/stop_training');
+                document.getElementById('trainingStatus').textContent = 'Training stopped by user';
+                document.getElementById('trainingStatus').className = 'status-indicator status-inactive';
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+            } catch (error) {
+                alert('Error stopping training: ' + error.message);
+            }
+        }
+        
+        // Update display with current training status
+        async function updateDisplay() {
+            try {
+                const response = await fetch('/api/training_status');
                 const data = await response.json();
                 
-                if (data.live_game && data.live_game.game_log) {
-                    // Animate through the moves
-                    const gameLog = data.live_game.game_log;
-                    let moveIndex = 0;
-                    
-                    const animateGame = setInterval(() => {
-                        if (moveIndex < gameLog.length) {
-                            updateBoard(gameLog[moveIndex]);
-                            moveIndex++;
-                        } else {
-                            clearInterval(animateGame);
-                        }
-                    }, 500);
+                // Update training status
+                const statusEl = document.getElementById('trainingStatus');
+                if (data.training_active) {
+                    statusEl.textContent = data.live_game.status;
+                    statusEl.className = 'status-indicator status-active';
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                } else {
+                    statusEl.className = 'status-indicator status-inactive';
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                }
+                
+                // Update chess board
+                if (board && data.live_game.current_fen) {
+                    board.position(data.live_game.current_fen);
+                }
+                
+                // Update moves log
+                const movesLog = document.getElementById('movesLog');
+                movesLog.innerHTML = data.live_game.moves.map(move => 
+                    `<div class="move-entry">${move}</div>`
+                ).join('');
+                movesLog.scrollTop = movesLog.scrollHeight;
+                
+                // Update current game
+                document.getElementById('currentGame').textContent = data.live_game.game_number;
+                
+                // Update metrics
+                document.getElementById('totalGames').textContent = data.metrics.total_games;
+                document.getElementById('qWins').textContent = data.metrics.q_learning_wins;
+                document.getElementById('sWins').textContent = data.metrics.stockfish_wins;
+                document.getElementById('draws').textContent = data.metrics.draws;
+                document.getElementById('winRate').textContent = data.metrics.win_rate + '%';
+                document.getElementById('explorationRate').textContent = data.metrics.exploration_rate;
+                document.getElementById('statesLearned').textContent = data.metrics.states_learned;
+                
+                // Update game history
+                const historyEl = document.getElementById('gameHistory');
+                if (data.recent_games && data.recent_games.length > 0) {
+                    historyEl.innerHTML = data.recent_games.map(game => `
+                        <div class="game-item winner-${game.winner}">
+                            <span>Game ${game.game_number}</span>
+                            <span>${game.winner === 'q_learning' ? 'Q-Learning Won' : 
+                                  game.winner === 'stockfish' ? 'Stockfish Won' : 'Draw'}</span>
+                            <span>${game.moves} moves</span>
+                            <span>Exploration: ${game.exploration_rate.toFixed(3)}</span>
+                        </div>
+                    `).join('');
+                }
+                
+                // Update progress chart periodically
+                if (data.metrics.total_games % 5 === 0) {
+                    updateProgressChart();
                 }
                 
             } catch (error) {
-                console.error('Error watching live game:', error);
+                console.error('Error updating display:', error);
             }
         }
         
-        // Update statistics
-        async function updateStats() {
+        // Update progress chart
+        async function updateProgressChart() {
             try {
-                const [statsResponse, historyResponse] = await Promise.all([
-                    fetch('/api/agent_stats'),
-                    fetch('/api/game_history')
-                ]);
+                const response = await fetch('/api/agent_progress');
+                const data = await response.json();
                 
-                const stats = await statsResponse.json();
-                const history = await historyResponse.json();
-                
-                // Update stats display
-                document.getElementById('totalGames').textContent = stats.total_games || 0;
-                document.getElementById('winRate').textContent = stats.win_rate ? stats.win_rate.toFixed(1) + '%' : '0%';
-                document.getElementById('qlearningWins').textContent = stats.recent_wins || 0;
-                document.getElementById('stockfishWins').textContent = stats.recent_losses || 0;
-                document.getElementById('draws').textContent = stats.recent_draws || 0;
-                document.getElementById('statesLearned').textContent = stats.states_learned || 0;
-                
-                // Update game history
-                const historyElement = document.getElementById('gameHistory');
-                if (history.games && history.games.length > 0) {
-                    historyElement.innerHTML = history.games.map(game => `
-                        <div class="game-item">
-                            <span>Game ${game.game_number}</span>
-                            <span class="winner-${game.winner}">
-                                ${game.winner === 'q_learning' ? 'Q-Learning Won' : 
-                                  game.winner === 'stockfish' ? 'Stockfish Won' : 'Draw'}
-                            </span>
-                            <span>${game.moves} moves</span>
-                        </div>
-                    `).join('');
-                } else {
-                    historyElement.innerHTML = '<div class="game-item">No games played yet</div>';
+                if (progressChart && data.progress.length > 0) {
+                    const labels = data.progress.map(p => `Game ${p.game_number}`);
+                    const winRates = [];
+                    
+                    // Calculate cumulative win rate
+                    let qWins = 0;
+                    data.progress.forEach((game, index) => {
+                        if (game.winner === 'q_learning') qWins++;
+                        winRates.push((qWins / (index + 1)) * 100);
+                    });
+                    
+                    progressChart.data.labels = labels;
+                    progressChart.data.datasets[0].data = winRates;
+                    progressChart.update();
                 }
                 
             } catch (error) {
-                console.error('Error updating stats:', error);
+                console.error('Error updating chart:', error);
             }
         }
         
         // Initialize on page load
         window.onload = function() {
             initBoard();
-            updateStats();
+            initChart();
             
-            // Update stats every 5 seconds
-            setInterval(updateStats, 5000);
+            // Update display every second
+            setInterval(updateDisplay, 1000);
+            
+            // Update progress chart every 10 seconds
+            setInterval(updateProgressChart, 10000);
         };
     </script>
 </body>

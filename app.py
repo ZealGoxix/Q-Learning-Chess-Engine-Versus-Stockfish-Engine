@@ -1,87 +1,325 @@
 from flask import Flask, render_template, jsonify, request
 import chess
 import chess.engine
-from chess_ai import ChessQLearningAgent, run_game
+import numpy as np
+import random
+import time
 import threading
-import os
+from collections import deque
 
 app = Flask(__name__)
 
-# Global variables to track game state
-current_game = None
-game_history = []
-q_agent = None
+# Global training state
+training_active = False
+current_training_session = None
+training_results = []
+live_game_data = {
+    'current_fen': 'start',
+    'moves': [],
+    'q_learning_score': 0,
+    'stockfish_score': 0,
+    'game_number': 0,
+    'status': 'Waiting to start training...'
+}
+
+class ChessQLearningAgent:
+    def __init__(self):
+        self.q_table = {}
+        self.learning_rate = 0.1
+        self.discount_factor = 0.95
+        self.exploration_rate = 0.5
+        self.learning_history = []
+        
+    def get_state_key(self, board):
+        """Create a simplified state representation"""
+        # Use material count and piece positions as state
+        material = self.calculate_material(board)
+        return f"{material}_{board.turn}"
+    
+    def calculate_material(self, board):
+        """Calculate material advantage for white"""
+        piece_values = {'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0}
+        white_material = 0
+        black_material = 0
+        
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                value = piece_values.get(piece.symbol().lower(), 0)
+                if piece.color == chess.WHITE:
+                    white_material += value
+                else:
+                    black_material += value
+        
+        return white_material - black_material
+    
+    def get_move(self, board):
+        """Choose move using epsilon-greedy policy"""
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return None
+            
+        state = self.get_state_key(board)
+        
+        # Initialize state if not seen before
+        if state not in self.q_table:
+            self.q_table[state] = {str(move): 0 for move in legal_moves}
+        
+        # Explore: random move
+        if random.random() < self.exploration_rate:
+            return random.choice(legal_moves)
+        
+        # Exploit: best known move
+        q_values = self.q_table[state]
+        best_move = None
+        best_value = -float('inf')
+        
+        for move in legal_moves:
+            move_str = str(move)
+            value = q_values.get(move_str, 0)
+            if value > best_value:
+                best_value = value
+                best_move = move
+        
+        return best_move if best_move else random.choice(legal_moves)
+    
+    def update(self, old_board, move, reward, new_board):
+        """Update Q-values using Q-learning"""
+        old_state = self.get_state_key(old_board)
+        new_state = self.get_state_key(new_board)
+        move_str = str(move)
+        
+        # Initialize states if needed
+        if old_state not in self.q_table:
+            self.q_table[old_state] = {}
+        if new_state not in self.q_table:
+            self.q_table[new_state] = {}
+        
+        # Get current Q-value
+        current_q = self.q_table[old_state].get(move_str, 0)
+        
+        # Get maximum future Q-value
+        max_future_q = max(self.q_table[new_state].values()) if self.q_table[new_state] else 0
+        
+        # Q-learning formula
+        new_q = current_q + self.learning_rate * (
+            reward + self.discount_factor * max_future_q - current_q
+        )
+        
+        self.q_table[old_state][move_str] = new_q
+        self.learning_history.append({
+            'old_state': old_state,
+            'move': move_str,
+            'reward': reward,
+            'new_q': new_q
+        })
+
+def calculate_reward(old_board, move, new_board):
+    """Calculate reward for a move"""
+    reward = 0
+    
+    # Check for game outcome
+    if new_board.is_checkmate():
+        if new_board.turn:  # Black just moved, so White (Q-learning) won
+            reward = 100
+        else:
+            reward = -100
+    elif new_board.is_stalemate() or new_board.is_insufficient_material():
+        reward = 10  # Small reward for draw
+    elif new_board.is_check():
+        reward = 5  # Reward for check
+    elif old_board.is_capture(move):
+        # Reward based on captured piece value
+        piece_values = {'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9}
+        captured_piece = old_board.piece_at(move.to_square)
+        if captured_piece:
+            piece_symbol = captured_piece.symbol().lower()
+            reward = piece_values.get(piece_symbol, 1)
+    
+    return reward
+
+# Global Q-learning agent
+q_agent = ChessQLearningAgent()
+
+def run_training_session(num_games):
+    """Run training session in background"""
+    global training_active, live_game_data, training_results
+    
+    training_active = True
+    session_results = []
+    
+    try:
+        # Initialize Stockfish
+        engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        
+        for game_num in range(num_games):
+            if not training_active:
+                break
+                
+            board = chess.Board()
+            game_moves = []
+            q_agent.exploration_rate = max(0.1, 0.5 * (0.99 ** game_num))  # Decay exploration
+            
+            # Update live game data
+            live_game_data.update({
+                'current_fen': board.fen(),
+                'moves': [],
+                'game_number': game_num + 1,
+                'status': f'Game {game_num + 1}/{num_games} - In progress...'
+            })
+            
+            while not board.is_game_over() and len(game_moves) < 100:
+                if not training_active:
+                    break
+                    
+                if board.turn:  # Q-learning agent's turn (White)
+                    old_board = board.copy()
+                    move = q_agent.get_move(board)
+                    
+                    if not move:
+                        break
+                        
+                    board.push(move)
+                    reward = calculate_reward(old_board, move, board)
+                    game_moves.append(f"Q-Learning: {move}")
+                    
+                    # Update live display
+                    live_game_data['current_fen'] = board.fen()
+                    live_game_data['moves'] = game_moves[-10:]  # Last 10 moves
+                    
+                    # Update Q-values if game continues
+                    if not board.is_game_over():
+                        # Get Stockfish's response for learning
+                        stockfish_move = engine.play(board, chess.engine.Limit(time=0.1)).move
+                        new_board = board.copy()
+                        new_board.push(stockfish_move)
+                        q_agent.update(old_board, move, reward, new_board)
+                    else:
+                        q_agent.update(old_board, move, reward, board)
+                        
+                else:  # Stockfish's turn
+                    move = engine.play(board, chess.engine.Limit(time=0.1)).move
+                    board.push(move)
+                    game_moves.append(f"Stockfish: {move}")
+                    
+                    # Update live display
+                    live_game_data['current_fen'] = board.fen()
+                    live_game_data['moves'] = game_moves[-10:]
+                
+                time.sleep(0.5)  # Slow down for watching
+            
+            # Determine game result
+            if board.is_checkmate():
+                winner = "q_learning" if not board.turn else "stockfish"
+            else:
+                winner = "draw"
+            
+            game_result = {
+                'game_number': game_num + 1,
+                'winner': winner,
+                'moves': len(game_moves),
+                'exploration_rate': q_agent.exploration_rate,
+                'states_learned': len(q_agent.q_table)
+            }
+            
+            session_results.append(game_result)
+            training_results.append(game_result)
+            
+            # Update final game state
+            live_game_data.update({
+                'current_fen': board.fen(),
+                'status': f'Game {game_num + 1}/{num_games} - Complete! Winner: {winner}'
+            })
+            
+            time.sleep(1)  # Pause between games
+        
+        engine.quit()
+        
+    except Exception as e:
+        print(f"Training error: {e}")
+        live_game_data['status'] = f'Error: {str(e)}'
+    
+    training_active = False
+    return session_results
 
 @app.route('/')
-def index():
-    """Main page with chess board and controls"""
+def home():
     return render_template('index.html')
 
 @app.route('/api/start_training', methods=['POST'])
 def start_training():
-    """Start training session between Q-learning and Stockfish"""
-    global current_game, q_agent
+    """Start a new training session"""
+    global current_training_session, training_active
+    
+    if training_active:
+        return jsonify({'error': 'Training already in progress'})
     
     data = request.json
     num_games = data.get('num_games', 10)
     
-    # Initialize Q-learning agent if first time
-    if q_agent is None:
-        q_agent = ChessQLearningAgent()
+    # Start training in background thread
+    current_training_session = threading.Thread(
+        target=lambda: run_training_session(num_games)
+    )
+    current_training_session.daemon = True
+    current_training_session.start()
     
-    # Run games in background thread
-    def train_background():
-        global game_history
-        results = run_game(q_agent, num_games=num_games)
-        game_history.extend(results)
-    
-    thread = threading.Thread(target=train_background)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({'status': 'started', 'games': num_games})
+    return jsonify({
+        'status': 'started', 
+        'num_games': num_games,
+        'message': f'Started training session with {num_games} games'
+    })
 
-@app.route('/api/game_history')
-def get_game_history():
-    """Get history of all games played"""
-    return jsonify({'games': game_history[-20:]})  # Last 20 games
+@app.route('/api/stop_training')
+def stop_training():
+    """Stop current training session"""
+    global training_active
+    training_active = False
+    return jsonify({'status': 'stopped'})
 
-@app.route('/api/agent_stats')
-def get_agent_stats():
-    """Get Q-learning agent performance statistics"""
-    if q_agent is None:
-        return jsonify({'error': 'Agent not trained yet'})
+@app.route('/api/training_status')
+def training_status():
+    """Get current training status and live game data"""
+    global training_active, training_results
     
-    # Calculate basic stats from game history
-    if game_history:
-        recent_games = game_history[-50:]  # Last 50 games
-        wins = sum(1 for game in recent_games if game['winner'] == 'q_learning')
-        losses = sum(1 for game in recent_games if game['winner'] == 'stockfish')
-        draws = sum(1 for game in recent_games if game['winner'] == 'draw')
-        
-        stats = {
-            'total_games': len(game_history),
-            'recent_wins': wins,
-            'recent_losses': losses, 
-            'recent_draws': draws,
-            'win_rate': (wins / len(recent_games)) * 100 if recent_games else 0,
-            'states_learned': len(q_agent.q_table)
-        }
+    # Calculate metrics
+    if training_results:
+        recent_games = training_results[-50:]
+        q_wins = sum(1 for g in recent_games if g['winner'] == 'q_learning')
+        s_wins = sum(1 for g in recent_games if g['winner'] == 'stockfish')
+        draws = sum(1 for g in recent_games if g['winner'] == 'draw')
+        win_rate = (q_wins / len(recent_games)) * 100 if recent_games else 0
     else:
-        stats = {'total_games': 0, 'win_rate': 0, 'states_learned': 0}
+        q_wins = s_wins = draws = win_rate = 0
     
-    return jsonify(stats)
+    return jsonify({
+        'training_active': training_active,
+        'live_game': live_game_data,
+        'metrics': {
+            'total_games': len(training_results),
+            'q_learning_wins': q_wins,
+            'stockfish_wins': s_wins,
+            'draws': draws,
+            'win_rate': round(win_rate, 1),
+            'exploration_rate': round(q_agent.exploration_rate, 3),
+            'states_learned': len(q_agent.q_table)
+        },
+        'recent_games': training_results[-10:]  # Last 10 games
+    })
 
-@app.route('/api/watch_game')
-def watch_live_game():
-    """Run a single game and return move-by-move data"""
-    if q_agent is None:
-        q_agent = ChessQLearningAgent()
+@app.route('/api/agent_progress')
+def agent_progress():
+    """Get Q-learning agent learning progress"""
+    progress_data = []
+    for i, game in enumerate(training_results):
+        if i % 5 == 0:  # Sample every 5 games
+            progress_data.append({
+                'game_number': game['game_number'],
+                'winner': game['winner'],
+                'states_learned': game['states_learned']
+            })
     
-    # Run one game and return all moves
-    game_result = run_game(q_agent, num_games=1, return_moves=True)
-    
-    return jsonify({'live_game': game_result})
+    return jsonify({'progress': progress_data})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
