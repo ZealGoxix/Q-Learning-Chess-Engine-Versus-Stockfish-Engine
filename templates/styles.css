@@ -1,0 +1,235 @@
+* {
+            box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+.container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    grid-template-areas: 
+        "header header"
+        "board controls"
+        "metrics metrics"
+        "progress progress"
+        "games games";
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.header {
+    grid-area: header;
+    text-align: center;
+    color: white;
+    margin-bottom: 20px;
+}
+
+.chess-board {
+    grid-area: board;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    text-align: center;
+}
+
+.controls {
+    grid-area: controls;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.metrics {
+    grid-area: metrics;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.progress {
+    grid-area: progress;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.games {
+    grid-area: games;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+#board {
+    width: 400px;
+    height: 400px;
+    margin: 0 auto;
+    border: 2px solid #333;
+}
+
+.controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+
+button:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+}
+
+button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+button.stop {
+    background: #f44336;
+}
+
+button.stop:hover {
+    background: #da190b;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    border-left: 4px solid #4CAF50;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #666;
+}
+
+.game-history {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.game-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.winner-qlearning { 
+    background: #e8f5e8; 
+    color: #2e7d32;
+    font-weight: bold;
+}
+
+.winner-stockfish { 
+    background: #ffebee; 
+    color: #c62828;
+    font-weight: bold;
+}
+
+.winner-draw { 
+    background: #fff3e0; 
+    color: #ef6c00;
+    font-weight: bold;
+}
+
+.status-indicator {
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    margin: 10px 0;
+    font-weight: bold;
+}
+
+.status-active { background: #e8f5e8; color: #2e7d32; }
+.status-inactive { background: #ffebee; color: #c62828; }
+
+.moves-log {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 5px;
+    background: #f9f9f9;
+    font-family: monospace;
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+.move-entry {
+    padding: 2px 0;
+}
+
+h1, h2, h3 {
+    color: #333;
+    margin-top: 0;
+}
+
+.chart-container {
+    height: 300px;
+    margin-top: 20px;
+}
+
+input[type="number"] {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+    width: 100px;
+}
+
+.warning {
+    background: #fff3cd;
+    color: #856404;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    border-left: 4px solid #ffc107;
+}
+
+.board-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
